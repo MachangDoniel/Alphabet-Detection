@@ -37,21 +37,20 @@ def preprocess_templates(template_dir):
                 preprocessed_templates[alphabet_file] = template_preprocessed
     return preprocessed_templates
 
-# Function to compare images based on pixel-wise similarity
+# Function to compare images based on dark pixel matching
 def compare_images(input_processed, template):
-    
+    # Find dark pixels (intensity 127 or less)
+    dark_pixels_input = input_processed <= 30
+    dark_pixels_template = template <= 30
+
     # cv2.imshow("Input Image",input_processed)
     # cv2.imshow("Template",template)
     # cv2.waitKey(0)
 
-    # Calculate Mean Squared Error (MSE)
-    mse = np.mean((input_processed - template) ** 2)
-
-    # Calculate percentage similarity only for non-zero pixels
-    non_zero_pixels = np.sum(template != 0)
-    similarity_percentage = (np.sum(template == input_processed) / non_zero_pixels) * 100 if non_zero_pixels > 0 else 0
+    # Count matching dark pixels
+    matching_dark_pixels = np.sum(dark_pixels_input & dark_pixels_template)
     
-    return mse, similarity_percentage
+    return matching_dark_pixels
 
 # Function to recognize multiple alphabets from the input image
 def recognize_alphabets(input_image, preprocessed_templates):
@@ -64,29 +63,21 @@ def recognize_alphabets(input_image, preprocessed_templates):
         cv2.waitKey(0)
 
         input_processed = preprocess_image(segment)
-        min_mse = float('inf')
-        max_similarity_percentage = 0
+        max_matching_dark_pixels = 0
         recognized_alphabet = None
 
         for alphabet_file, templates in preprocessed_templates.items():
             for template in templates:
-                template_mse, similarity_percentage = compare_images(input_processed, template)
+                matching_dark_pixels = compare_images(input_processed, template)
 
-                print(f"Comapring with {alphabet_file[0]}, MSE: {template_mse}, Similarity: {similarity_percentage}")
+                print(f"Comapring with {alphabet_file[0]}, Matched Pixel: {matching_dark_pixels}")
 
-                if template_mse < min_mse:
-                    min_mse = template_mse
+                if matching_dark_pixels > max_matching_dark_pixels:
+                    max_matching_dark_pixels = matching_dark_pixels
                     recognized_alphabet = os.path.splitext(alphabet_file)[0]  # Extract the alphabet from the filename
-
-                if similarity_percentage > max_similarity_percentage:
-                    max_similarity_percentage = similarity_percentage
-
-                if min_mse == 0 and max_similarity_percentage == 100:
-                    break
-        
-        print(f"Alphabet: {recognized_alphabet}, Min MSE: {min_mse}, Max Simialarity: {max_similarity_percentage}")
+        print(f"Alphabet: {recognized_alphabet}, Min MSE: {max_matching_dark_pixels}")
         print()
-        recognized_alphabets.append((recognized_alphabet, min_mse, max_similarity_percentage))
+        recognized_alphabets.append((recognized_alphabet, max_matching_dark_pixels))
 
     return recognized_alphabets
 
@@ -117,8 +108,8 @@ def detect_alphabet():
         recognized_alphabets = recognize_alphabets(input_image, preprocessed_templates)
 
         result_text = "Recognized Alphabets:\n"
-        for i, (alphabet, mse, similarity) in enumerate(recognized_alphabets):
-            result_text += f"Segment {i+1}: {alphabet} (MSE={mse}, Similarity={similarity}%)\n"
+        for i, (alphabet, matching_dark_pixels) in enumerate(recognized_alphabets):
+            result_text += f"Segment {i+1}: {alphabet} (Matching dark pixels={matching_dark_pixels})\n"
         
         result_label.config(text=result_text)
     else:

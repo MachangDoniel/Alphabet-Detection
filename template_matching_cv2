@@ -11,11 +11,16 @@ def segment_image(image):
     _, thresh = cv2.threshold(gray, 128, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
 
     contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    # Sort contours from left to right based on their x-coordinate
+    contours = sorted(contours, key=lambda c: cv2.boundingRect(c)[0])
+
     segments = []
     for contour in contours:
         x, y, w, h = cv2.boundingRect(contour)
         segments.append(image[y:y+h, x:x+w])
     return segments
+
 
 # Function to preprocess each character segment
 def preprocess_image(segment):
@@ -37,21 +42,43 @@ def preprocess_templates(template_dir):
                 preprocessed_templates[alphabet_file] = template_preprocessed
     return preprocessed_templates
 
-# Function to compare images based on pixel-wise similarity
+# # Function to compare images using template matching
+# def compare_images(input_processed, template):
+#     # Perform template matching
+#     result = cv2.matchTemplate(input_processed, template, cv2.TM_CCOEFF_NORMED)
+#     min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+
+#     return max_val
+
 def compare_images(input_processed, template):
-    
-    # cv2.imshow("Input Image",input_processed)
-    # cv2.imshow("Template",template)
-    # cv2.waitKey(0)
+    input_height, input_width = input_processed.shape
+    template_height, template_width = template.shape
 
-    # Calculate Mean Squared Error (MSE)
-    mse = np.mean((input_processed - template) ** 2)
+    # Calculate the mean intensity of the template
+    template_mean = np.mean(template)
 
-    # Calculate percentage similarity only for non-zero pixels
-    non_zero_pixels = np.sum(template != 0)
-    similarity_percentage = (np.sum(template == input_processed) / non_zero_pixels) * 100 if non_zero_pixels > 0 else 0
-    
-    return mse, similarity_percentage
+    # Initialize the maximum correlation value
+    max_correlation_value = -float('inf')
+
+    # Iterate over all possible positions to place the template on the input image
+    for y in range(input_height - template_height + 1):
+        for x in range(input_width - template_width + 1):
+            # Extract the region of interest (ROI) from the input image
+            roi = input_processed[y:y+template_height, x:x+template_width]
+
+            # Calculate the mean intensity of the ROI
+            roi_mean = np.mean(roi)
+
+            # Calculate the normalized cross-correlation coefficient
+            correlation_value = np.sum((roi - roi_mean) * (template - template_mean)) / \
+                                np.sqrt(np.sum((roi - roi_mean)**2) * np.sum((template - template_mean)**2))
+
+            # Update the maximum correlation value if needed
+            if correlation_value > max_correlation_value:
+                max_correlation_value = correlation_value
+
+    return max_correlation_value
+
 
 # Function to recognize multiple alphabets from the input image
 def recognize_alphabets(input_image, preprocessed_templates):
@@ -60,33 +87,22 @@ def recognize_alphabets(input_image, preprocessed_templates):
 
     for segment in segments:
 
-        cv2.imshow("Segment",segment)
-        cv2.waitKey(0)
+        # cv2.imshow("Segment",segment)
+        # cv2.waitKey(0)
 
         input_processed = preprocess_image(segment)
-        min_mse = float('inf')
-        max_similarity_percentage = 0
+        max_match_val = -1
         recognized_alphabet = None
 
         for alphabet_file, templates in preprocessed_templates.items():
             for template in templates:
-                template_mse, similarity_percentage = compare_images(input_processed, template)
+                match_val = compare_images(input_processed, template)
 
-                print(f"Comapring with {alphabet_file[0]}, MSE: {template_mse}, Similarity: {similarity_percentage}")
-
-                if template_mse < min_mse:
-                    min_mse = template_mse
+                if match_val > max_match_val:
+                    max_match_val = match_val
                     recognized_alphabet = os.path.splitext(alphabet_file)[0]  # Extract the alphabet from the filename
 
-                if similarity_percentage > max_similarity_percentage:
-                    max_similarity_percentage = similarity_percentage
-
-                if min_mse == 0 and max_similarity_percentage == 100:
-                    break
-        
-        print(f"Alphabet: {recognized_alphabet}, Min MSE: {min_mse}, Max Simialarity: {max_similarity_percentage}")
-        print()
-        recognized_alphabets.append((recognized_alphabet, min_mse, max_similarity_percentage))
+        recognized_alphabets.append((recognized_alphabet, max_match_val))
 
     return recognized_alphabets
 
@@ -100,12 +116,29 @@ def select_image():
 # Function to load and display the selected image
 def load_image(image_path):
     image = cv2.imread(image_path)
-    # Resize image to 100x100
-    image = cv2.resize(image, (100, 100))
+    
+    # Calculate aspect ratio
+    aspect_ratio = image.shape[1] / image.shape[0]
+    
+    # Define maximum height
+    max_height = 200
+    
+    # Calculate width based on aspect ratio
+    target_width = int(max_height * aspect_ratio)
+    
+    # Resize image
+    image = cv2.resize(image, (target_width, max_height))
+    
+    # Convert BGR image to RGB
     image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    
+    # Convert image to PhotoImage format
     photo = ImageTk.PhotoImage(image=Image.fromarray(image_rgb))
+    
+    # Update the image label
     image_label.config(image=photo)
     image_label.image = photo
+
 
 # Function to perform alphabet detection
 def detect_alphabet():
@@ -117,8 +150,8 @@ def detect_alphabet():
         recognized_alphabets = recognize_alphabets(input_image, preprocessed_templates)
 
         result_text = "Recognized Alphabets:\n"
-        for i, (alphabet, mse, similarity) in enumerate(recognized_alphabets):
-            result_text += f"Segment {i+1}: {alphabet} (MSE={mse}, Similarity={similarity}%)\n"
+        for i, (alphabet, match_val) in enumerate(recognized_alphabets):
+            result_text += f"Segment {i+1}: {alphabet} (Match Value={match_val})\n"
         
         result_label.config(text=result_text)
     else:
