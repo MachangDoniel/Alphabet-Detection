@@ -6,33 +6,27 @@ from PIL import Image, ImageTk
 import os
 import matplotlib.pyplot as plt
 
-# Function to display intermediate images
+
 def show_intermediate_images(original):
-    # Apply Gaussian blur
+
     blurred = cv2.GaussianBlur(original, (5, 5), 0)
     
-    # Convert to grayscale
     gray = cv2.cvtColor(blurred, cv2.COLOR_BGR2GRAY)
     
-    # Apply thresholding
     _, thresh = cv2.threshold(gray, 128, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
     
-    # Find contours
     contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     
-    # Sort contours based on x-coordinate of bounding rectangle
+    # Sort contours based on x-coordinate
     contours_with_rects = [(contour, cv2.boundingRect(contour)) for contour in contours]
-    contours_with_rects.sort(key=lambda cr: cr[1][0])  # Sort by x-coordinate
+    contours_with_rects.sort(key=lambda cr: cr[1][0])
     
-    # Unpack sorted contours and their bounding rectangles
     sorted_contours = [cr[0] for cr in contours_with_rects]
     
-    # Create images to draw contours on
     contours_images = [original.copy() for _ in sorted_contours]
     for i, contour in enumerate(sorted_contours):
         cv2.drawContours(contours_images[i], [contour], -1, (0, 255, 0), 2)
     
-    # Plot original, blurred, grayscale, and threshold images
     plt.figure(figsize=(14, 10))
     
     plt.subplot(2, 2, 1)
@@ -57,11 +51,9 @@ def show_intermediate_images(original):
     
     plt.show()
 
-    # Plot contours
     num_contours = len(sorted_contours)
-    cols = 3  # Number of columns in the subplot grid
-    rows = (num_contours + cols - 1) // cols  # Calculate the number of rows needed
-
+    cols = 3
+    rows = (num_contours + cols - 1) // cols
     plt.figure(figsize=(15, 5 * rows))
     for i, contour_image in enumerate(contours_images):
         plt.subplot(rows, cols, i + 1)
@@ -74,8 +66,6 @@ def show_intermediate_images(original):
 
 
 
-
-# Function to segment the image
 def segment_image(image):
     blurred = cv2.GaussianBlur(image, (5, 5), 0)
     gray = cv2.cvtColor(blurred, cv2.COLOR_BGR2GRAY)
@@ -106,12 +96,10 @@ def segment_image(image):
     if not segments:
         print("No valid segments found.")
     
-    # Show intermediate images
     # show_intermediate_images(image, blurred, gray, thresh, image_with_boxes)
     
     return segments, image_with_boxes, bounding_boxes
 
-# Function to preprocess each segment of the image
 def preprocess_image(segment):
     if segment is None or not isinstance(segment, np.ndarray):
         print("Segment is not a valid NumPy array.")
@@ -120,7 +108,6 @@ def preprocess_image(segment):
     gray = cv2.cvtColor(resized, cv2.COLOR_BGR2GRAY)
     return gray
 
-# Function to preprocess templates from multiple directories
 def preprocess_templates(template_dirs):
     preprocessed_templates = {}
     for template_dir in template_dirs:
@@ -128,7 +115,7 @@ def preprocess_templates(template_dirs):
             template_path = os.path.join(template_dir, alphabet_file)
             template = cv2.imread(template_path)
             if template is not None:
-                segments, _, _ = segment_image(template)  # Unpack the values but ignore the third one
+                segments, _, _ = segment_image(template) 
                 if segments:
                     template_preprocessed = [preprocess_image(segment) for segment in segments if preprocess_image(segment) is not None]
                     preprocessed_templates[alphabet_file] = template_preprocessed
@@ -136,7 +123,6 @@ def preprocess_templates(template_dirs):
                 print(f"Error reading image file: {template_path}")
     return preprocessed_templates
 
-# Function to compare images using cross-correlation
 def compare_images(input_processed, template):
     input_height, input_width = input_processed.shape
     template_height, template_width = template.shape
@@ -155,9 +141,8 @@ def compare_images(input_processed, template):
 
     return max_correlation_value
 
-# Function to recognize alphabets from the input image
 def recognize_alphabets(input_image, preprocessed_templates):
-    segments, image_with_boxes, bounding_boxes = segment_image(input_image)  # Get segments and image with bounding boxes
+    segments, image_with_boxes, bounding_boxes = segment_image(input_image) 
 
     show_intermediate_images(input_image)
     recognized_alphabets = []
@@ -174,7 +159,7 @@ def recognize_alphabets(input_image, preprocessed_templates):
                 match_val = compare_images(input_processed, template)
                 if match_val > max_match_val:
                     max_match_val = match_val
-                    recognized_alphabet = os.path.splitext(alphabet_file)[0]  # Extract the alphabet from the filename
+                    recognized_alphabet = os.path.splitext(alphabet_file)[0]  
                     best_match_coord = bounding_boxes[idx]
 
         recognized_alphabets.append((recognized_alphabet, max_match_val))
@@ -182,7 +167,6 @@ def recognize_alphabets(input_image, preprocessed_templates):
 
     return recognized_alphabets, match_coords, image_with_boxes
 
-# Function to plot the matched templates over the selected image
 def plot_matched_templates(input_image, recognized_alphabets, match_coords, preprocessed_templates):
     fig, ax = plt.subplots()
     ax.imshow(cv2.cvtColor(input_image, cv2.COLOR_BGR2RGB))
@@ -202,18 +186,15 @@ def plot_matched_templates(input_image, recognized_alphabets, match_coords, prep
 
     plt.show()
 
-# Function to handle image selection
 def select_image():
     file_path = filedialog.askopenfilename(filetypes=[("Image Files", "*.png;*.jpg;*.jpeg")])
     if file_path:
         input_image_path.set(file_path)
         load_image(file_path)
 
-# Function to load and display the selected image
 def load_image(image_path):
     image = cv2.imread(image_path)
     if image is not None:
-        # Optionally resize the image to fit a specific display area if needed
         aspect_ratio = image.shape[1] / image.shape[0]
         max_height = 200
         target_width = int(max_height * aspect_ratio)
@@ -226,7 +207,6 @@ def load_image(image_path):
     else:
         print("Error loading image.")
 
-# Function to detect and display the recognized alphabets
 def detect_alphabet():
     input_path = input_image_path.get()
     if input_path:
@@ -245,7 +225,6 @@ def detect_alphabet():
                     alphabet = alphabet.replace("small_", "")
                 result_text += alphabet
                 
-                # Draw the matched template over the selected alphabet
                 if match_coords[i]:
                     x, y, w, h = match_coords[i]
                     cv2.rectangle(input_image, (x, y), (x + w, y + h), (0, 0, 128), 2)  # Navy blue color
